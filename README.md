@@ -142,7 +142,21 @@ reproducible: [docs/01_ambiente.md](docs/01_ambiente.md).
 
 ## Como descargar los datos
 
-<!-- TODO (Ejercicios 2.6, 5.1 y 8.1) -->
+```bash
+# descarga (omite los archivos que ya existen)
+docker compose exec lab python scripts/download_data.py
+
+# opciones
+docker compose exec lab python scripts/download_data.py --years 2026            # un anio
+docker compose exec lab python scripts/download_data.py --taxi green --years 2026
+
+# verificar completitud contra el servidor de la TLC (no descarga nada)
+docker compose exec lab python scripts/download_data.py --verify
+```
+
+Los archivos quedan en `data/raw/<tipo>/<anio>/` y el modo `--verify` escribe
+[docs/manifest_descarga.csv](docs/manifest_descarga.csv). Cambios al script y
+criterios de completitud: [docs/02_descarga.md](docs/02_descarga.md).
 
 ## Como ejecutar el analisis
 
