@@ -13,7 +13,6 @@ regenera siempre a partir del mismo codigo.
 
 import argparse
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -41,7 +40,7 @@ def main() -> int:
     con = connect(args.db)
     salida = [f"# Resultados de `{carpeta.relative_to(RAIZ)}`",
               "",
-              f"Generado por `scripts/run_sql.py` el {datetime.now():%Y-%m-%d %H:%M}.",
+              "Generado por `scripts/run_sql.py` (no editar a mano).",
               ""]
 
     for ruta in archivos:

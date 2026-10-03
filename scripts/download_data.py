@@ -28,6 +28,9 @@ Comportamiento:
     servidor (publicado / tamanio en bytes) y se valida que el Parquet sea
     legible leyendo su metadata. El resultado se guarda en un manifiesto CSV
     (docs/manifest_descarga.csv) que si se versiona.
+  - Ademas descarga la tabla de referencia de zonas de taxi de la TLC
+    (data/raw/reference/taxi_zone_lookup.csv), necesaria para traducir
+    PULocationID / DOLocationID a borough y zona.
 """
 
 import argparse
@@ -49,6 +52,8 @@ INTENTOS = 3                # intentos por archivo antes de darse por vencido
 BLOQUE = 1024 * 1024        # 1 MiB por bloque de descarga
 SUFIJO_TEMPORAL = ".part"
 MANIFIESTO = Path("docs/manifest_descarga.csv")
+URL_ZONAS = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
+DESTINO_ZONAS = DIR_DESTINO / "reference" / "taxi_zone_lookup.csv"
 
 
 def construir_nombre(tipo: str, anio: int, mes: int) -> str:
@@ -152,6 +157,15 @@ def descargar(tipo: str, anio: int) -> dict:
     return resumen
 
 
+def descargar_referencias() -> None:
+    """Descarga la tabla de zonas de la TLC si no existe localmente."""
+    if DESTINO_ZONAS.exists() and DESTINO_ZONAS.stat().st_size > 0:
+        print(f"\nzonas: ya existe {DESTINO_ZONAS}")
+        return
+    escritos = descargar_archivo(URL_ZONAS, DESTINO_ZONAS)
+    print(f"\nzonas: listo ({formato_tamanio(escritos)}) -> {DESTINO_ZONAS}")
+
+
 def verificar(tipos: tuple, anios: list) -> int:
     """Compara los archivos locales con los publicados y escribe el manifiesto.
 
@@ -233,6 +247,8 @@ def main() -> int:
     tipos = TIPOS_TAXI if argumentos.taxi == "all" else (argumentos.taxi,)
     if argumentos.verify:
         return verificar(tipos, sorted(set(argumentos.years)))
+
+    descargar_referencias()
 
     total = {"descargados": 0, "omitidos": 0, "no_publicados": [], "fallidos": []}
     for anio in sorted(set(argumentos.years)):

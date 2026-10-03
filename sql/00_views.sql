@@ -110,3 +110,9 @@ WHERE year(pickup_at) = file_year
   AND trip_distance > 0 AND trip_distance < 200
   AND fare_amount > 0
   AND total_amount > 0 AND total_amount < 1000;
+
+-- Tabla de zonas de la TLC (LocationID -> Borough, Zone). La descarga
+-- scripts/download_data.py junto con los Parquet.
+CREATE OR REPLACE VIEW zones AS
+SELECT LocationID AS location_id, Borough AS borough, Zone AS zone, service_zone
+FROM read_csv('/workspace/data/raw/reference/taxi_zone_lookup.csv', header = true);
