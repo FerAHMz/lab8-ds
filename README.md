@@ -119,7 +119,26 @@ generar los resultados principales.
 
 ## Como levantar el ambiente
 
-<!-- TODO (Ejercicio 1.5) -->
+Requisitos: Docker con Docker Compose, Git y al menos 10 GB libres.
+
+```bash
+git clone https://github.com/FerAHMz/lab8-ds.git
+cd lab8-ds
+docker compose up --build -d
+docker compose ps            # lab8-lab y lab8-metabase deben estar "Up"
+```
+
+| Servicio | URL | Comprobacion |
+|---|---|---|
+| JupyterLab (`lab`) | <http://127.0.0.1:8888> | `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8888/lab` devuelve `200` |
+| Metabase (`metabase`) | <http://127.0.0.1:3000> | `curl -s http://127.0.0.1:3000/api/health` devuelve `{"status":"ok"}` |
+
+Todos los comandos de Python del laboratorio se ejecutan **dentro** del
+contenedor `lab`, por ejemplo `docker compose exec lab python scripts/download_data.py`.
+Para detener el ambiente: `docker compose down` (los datos en `data/` se conservan).
+
+Detalle de la estructura, herramientas disponibles y justificacion del ambiente
+reproducible: [docs/01_ambiente.md](docs/01_ambiente.md).
 
 ## Como descargar los datos
 
