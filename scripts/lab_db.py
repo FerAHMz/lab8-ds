@@ -1,0 +1,65 @@
+"""Utilidades compartidas para trabajar con DuckDB en el laboratorio.
+
+    from lab_db import connect, run_query_file
+
+`connect()` abre una conexion (en memoria por defecto) y crea las vistas de
+sql/00_views.sql, de modo que todas las consultas leen los Parquet de la misma
+forma desde notebooks, scripts y benchmark.
+"""
+
+import re
+import time
+from pathlib import Path
+
+import duckdb
+
+RAIZ = Path(__file__).resolve().parents[1]
+DIR_SQL = RAIZ / "sql"
+VISTAS = DIR_SQL / "00_views.sql"
+BASE_MATERIALIZADA = RAIZ / "data" / "processed" / "taxis.duckdb"
+
+
+def connect(database: str | Path = ":memory:", read_only: bool = False,
+            vistas: bool = True) -> duckdb.DuckDBPyConnection:
+    """Conexion DuckDB con las vistas del laboratorio ya creadas."""
+    con = duckdb.connect(str(database), read_only=read_only)
+    if vistas and not read_only:
+        con.execute(VISTAS.read_text())
+    return con
+
+
+def leer_consulta(ruta: Path) -> dict:
+    """Separa un archivo .sql en su encabezado (comentarios `-- Clave: valor`) y el SQL."""
+    texto = Path(ruta).read_text()
+    meta = {}
+    for clave, valor in re.findall(r"^--\s*([A-Za-zÁÉÍÓÚáéíóúñ ]+):\s*(.+)$", texto, re.M):
+        meta[clave.strip().lower()] = valor.strip()
+    sql = "\n".join(l for l in texto.splitlines() if not l.lstrip().startswith("--")).strip()
+    return {"archivo": Path(ruta).name, "meta": meta, "sql": sql, "texto": texto}
+
+
+def run_query_file(con: duckdb.DuckDBPyConnection, ruta: Path):
+    """Ejecuta una consulta de un archivo y devuelve (DataFrame, segundos)."""
+    consulta = leer_consulta(ruta)
+    inicio = time.perf_counter()
+    df = con.sql(consulta["sql"]).df()
+    return df, time.perf_counter() - inicio
+
+
+def a_markdown(df, max_filas: int = 40) -> str:
+    """Tabla Markdown sin dependencias externas."""
+    df = df.head(max_filas)
+
+    def fmt(v):
+        if isinstance(v, float):
+            return f"{v:,.2f}"
+        if isinstance(v, int):
+            return f"{v:,}"
+        return str(v).replace("|", "\\|")
+
+    columnas = [str(c) for c in df.columns]
+    lineas = ["| " + " | ".join(columnas) + " |",
+              "|" + "---|" * len(columnas)]
+    for fila in df.itertuples(index=False):
+        lineas.append("| " + " | ".join(fmt(v) for v in fila) + " |")
+    return "\n".join(lineas)
