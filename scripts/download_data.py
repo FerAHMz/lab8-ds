@@ -24,12 +24,18 @@ Comportamiento:
   - Un archivo que ya existe localmente no se vuelve a descargar.
   - La descarga se hace sobre un nombre temporal y solo se renombra al
     terminar, de modo que una interrupcion no deja archivos .parquet a medias.
+  - Con --verify no se descarga nada: se compara cada archivo local contra el
+    servidor (publicado / tamanio en bytes) y se valida que el Parquet sea
+    legible leyendo su metadata. El resultado se guarda en un manifiesto CSV
+    (docs/manifest_descarga.csv) que si se versiona.
 """
 
 import argparse
+import csv
 import sys
 from pathlib import Path
 
+import pyarrow.parquet as pq
 import requests
 
 # Anios que se descargan cuando no se pasa --years.
@@ -42,6 +48,7 @@ TIEMPO_ESPERA = 60          # segundos por peticion
 INTENTOS = 3                # intentos por archivo antes de darse por vencido
 BLOQUE = 1024 * 1024        # 1 MiB por bloque de descarga
 SUFIJO_TEMPORAL = ".part"
+MANIFIESTO = Path("docs/manifest_descarga.csv")
 
 
 def construir_nombre(tipo: str, anio: int, mes: int) -> str:
@@ -61,11 +68,18 @@ def ruta_destino(tipo: str, anio: int, mes: int) -> Path:
 
 def esta_publicado(url: str) -> bool:
     """Indica si el archivo existe en el servidor (sin descargarlo)."""
+    return tamanio_remoto(url) is not None
+
+
+def tamanio_remoto(url: str) -> int | None:
+    """Tamanio en bytes publicado por el servidor, o None si no esta publicado."""
     try:
         respuesta = requests.head(url, timeout=TIEMPO_ESPERA, allow_redirects=True)
     except requests.RequestException:
-        return False
-    return respuesta.ok
+        return None
+    if not respuesta.ok:
+        return None
+    return int(respuesta.headers.get("Content-Length", -1))
 
 
 def formato_tamanio(n: float) -> str:
@@ -138,6 +152,65 @@ def descargar(tipo: str, anio: int) -> dict:
     return resumen
 
 
+def verificar(tipos: tuple, anios: list) -> int:
+    """Compara los archivos locales con los publicados y escribe el manifiesto.
+
+    Un archivo se considera correcto si esta publicado, existe localmente, su
+    tamanio coincide byte a byte con el Content-Length del servidor y pyarrow
+    puede leer su metadata (numero de filas y de row groups).
+    """
+    filas = []
+    problemas = 0
+    for anio in anios:
+        for tipo in tipos:
+            print(f"\n=== VERIFICAR {tipo.upper()} {anio} ===")
+            for mes in range(1, 13):
+                url = construir_url(tipo, anio, mes)
+                destino = ruta_destino(tipo, anio, mes)
+                remoto = tamanio_remoto(url)
+                local = destino.stat().st_size if destino.exists() else None
+                registros = None
+
+                if remoto is None and local is None:
+                    estado = "no_publicado"
+                elif remoto is not None and local is None:
+                    estado = "FALTANTE"
+                elif remoto is not None and local != remoto:
+                    estado = "TAMANIO_DISTINTO"
+                else:
+                    try:
+                        registros = pq.ParquetFile(destino).metadata.num_rows
+                        estado = "ok"
+                    except Exception as error:  # archivo corrupto o truncado
+                        estado = f"ILEGIBLE ({error})"
+
+                if estado not in ("ok", "no_publicado"):
+                    problemas += 1
+                print(f"  {anio}-{mes:02d}  {estado:<16} local={local} remoto={remoto} filas={registros}")
+                filas.append({
+                    "tipo": tipo, "anio": anio, "mes": mes,
+                    "archivo": construir_nombre(tipo, anio, mes),
+                    "estado": estado, "bytes_local": local, "bytes_remoto": remoto,
+                    "registros": registros,
+                })
+
+    MANIFIESTO.parent.mkdir(parents=True, exist_ok=True)
+    with MANIFIESTO.open("w", newline="") as archivo:
+        escritor = csv.DictWriter(archivo, fieldnames=list(filas[0]))
+        escritor.writeheader()
+        escritor.writerows(filas)
+
+    correctos = sum(f["estado"] == "ok" for f in filas)
+    print("\n" + "=" * 60)
+    print(f"  archivos correctos : {correctos}")
+    print(f"  no publicados      : {sum(f['estado'] == 'no_publicado' for f in filas)}")
+    print(f"  con problemas      : {problemas}")
+    print(f"  registros totales  : {sum(f['registros'] or 0 for f in filas):,}")
+    print(f"  manifiesto         : {MANIFIESTO}")
+    print("=" * 60)
+    return 1 if problemas else 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Descarga los datos de taxis amarillos y verdes del NYC TLC."
@@ -151,9 +224,15 @@ def main() -> int:
         metavar="ANIO",
         help=f"anios a descargar (por defecto: {' '.join(map(str, ANIOS_POR_DEFECTO))})",
     )
+    parser.add_argument(
+        "--verify", action="store_true",
+        help="no descarga: verifica los archivos locales contra el servidor",
+    )
     argumentos = parser.parse_args()
 
     tipos = TIPOS_TAXI if argumentos.taxi == "all" else (argumentos.taxi,)
+    if argumentos.verify:
+        return verificar(tipos, sorted(set(argumentos.years)))
 
     total = {"descargados": 0, "omitidos": 0, "no_publicados": [], "fallidos": []}
     for anio in sorted(set(argumentos.years)):
