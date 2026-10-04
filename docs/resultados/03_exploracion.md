@@ -1,6 +1,6 @@
 # Resultados de `sql/03_exploracion`
 
-Generado por `scripts/run_sql.py` el 2026-10-04 21:39.
+Generado por `scripts/run_sql.py` (no editar a mano).
 
 ## 01_cantidad_archivos.sql
 
@@ -46,7 +46,7 @@ FROM conteo
 ORDER BY taxi_type IS NULL, taxi_type, anio IS NULL, anio;
 ```
 
-Tiempo: 0.46 s · filas devueltas: 5
+Tiempo: 0.44 s · filas devueltas: 5
 
 | taxi_type | anio | registros |
 |---|---|---|
@@ -163,7 +163,7 @@ FROM read_parquet('/workspace/data/raw/yellow/*/*.parquet', union_by_name = true
 USING SAMPLE reservoir(8 ROWS) REPEATABLE (42);
 ```
 
-Tiempo: 0.11 s · filas devueltas: 8
+Tiempo: 0.06 s · filas devueltas: 8
 
 | tpep_pickup_datetime | tpep_dropoff_datetime | passenger_count | trip_distance | PULocationID | DOLocationID | payment_type | fare_amount | tip_amount | total_amount | congestion_surcharge | cbd_congestion_fee |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -222,7 +222,7 @@ GROUP BY 1
 ORDER BY 1;
 ```
 
-Tiempo: 0.31 s · filas devueltas: 2
+Tiempo: 0.29 s · filas devueltas: 2
 
 | taxi_type | registros | pct_null_passenger_count | pct_null_ratecode | pct_null_store_fwd | pct_null_congestion | pct_null_payment_type | pct_null_ehail_fee | pct_null_trip_type |
 |---|---|---|---|---|---|---|---|---|
@@ -252,7 +252,7 @@ GROUP BY 1
 ORDER BY 1;
 ```
 
-Tiempo: 0.39 s · filas devueltas: 2
+Tiempo: 0.40 s · filas devueltas: 2
 
 | taxi_type | registros | fuera_de_mes | pct_fuera_de_mes | pickup_minimo | pickup_maximo |
 |---|---|---|---|---|---|
@@ -289,7 +289,7 @@ GROUP BY 1
 ORDER BY 1;
 ```
 
-Tiempo: 0.59 s · filas devueltas: 2
+Tiempo: 0.58 s · filas devueltas: 2
 
 | taxi_type | registros | duracion_cero_o_negativa | duracion_mayor_4h | distancia_cero | distancia_200mi_o_mas | tarifa_negativa | total_cero_o_negativo | total_1000_o_mas | propina_negativa | pasajeros_cero | pasajeros_mas_de_6 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -309,16 +309,16 @@ FROM (SUMMARIZE SELECT passenger_count, trip_distance, fare_amount, tip_amount,
                 FROM read_parquet('/workspace/data/raw/yellow/*/*.parquet', union_by_name = true));
 ```
 
-Tiempo: 2.55 s · filas devueltas: 8
+Tiempo: 2.54 s · filas devueltas: 8
 
 | column_name | min | max | avg | std | q25 | q50 | q75 | null_percentage |
 |---|---|---|---|---|---|---|---|---|
 | passenger_count | 0 | 9 | 1.25 | 0.65 | 1.00 | 1.00 | 1.00 | 25.98 |
-| trip_distance | 0.0 | 328522.2 | 5.55 | 550.65 | 1.02 | 1.86 | 3.81 | 0.00 |
-| fare_amount | -2555.2 | 7045.0 | 21.26 | 18.96 | 10.01 | 15.79 | 26.43 | 0.00 |
-| tip_amount | -222.0 | 766.0 | 2.83 | 3.97 | 0.00 | 2.05 | 3.97 | 0.00 |
+| trip_distance | 0.0 | 328522.2 | 5.55 | 550.65 | 1.02 | 1.86 | 3.80 | 0.00 |
+| fare_amount | -2555.2 | 7045.0 | 21.26 | 18.96 | 10.02 | 15.78 | 26.44 | 0.00 |
+| tip_amount | -222.0 | 766.0 | 2.83 | 3.97 | 0.00 | 2.05 | 3.96 | 0.00 |
 | tolls_amount | -129.48 | 1400.0 | 0.54 | 2.23 | 0.00 | 0.00 | 0.00 | 0.00 |
-| total_amount | -2560.2 | 7053.5 | 30.07 | 22.75 | 17.38 | 23.60 | 34.63 | 0.00 |
+| total_amount | -2560.2 | 7053.5 | 30.07 | 22.75 | 17.38 | 23.59 | 34.57 | 0.00 |
 | congestion_surcharge | -2.5 | 2.75 | 2.22 | 0.84 | 2.50 | 2.50 | 2.50 | 25.98 |
 | cbd_congestion_fee | -0.75 | 0.75 | 0.54 | 0.34 | 0.00 | 0.75 | 0.75 | 0.00 |
 
@@ -396,7 +396,7 @@ GROUP BY ALL
 ORDER BY periodo, taxi_type, registros DESC;
 ```
 
-Tiempo: 0.16 s · filas devueltas: 29
+Tiempo: 0.14 s · filas devueltas: 29
 
 | periodo | taxi_type | request_source | registros |
 |---|---|---|---|
@@ -458,7 +458,7 @@ GROUP BY 1
 ORDER BY 1;
 ```
 
-Tiempo: 0.92 s · filas devueltas: 1
+Tiempo: 0.99 s · filas devueltas: 1
 
 | taxi_type | combinaciones_repetidas | registros_sobrantes | max_repeticiones |
 |---|---|---|---|
