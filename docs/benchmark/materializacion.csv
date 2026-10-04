@@ -1,0 +1,4 @@
+escenario,registros,mb_parquet,mb_duckdb,segundos_materializar
+1_mes,3377403,57.3,115.0,1.11
+2026,30040469,495.7,1008.3,19.54
+2024+2026,71870407,1171.7,2368.8,57.46
