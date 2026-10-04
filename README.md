@@ -143,11 +143,11 @@ reproducible: [docs/01_ambiente.md](docs/01_ambiente.md).
 ## Como descargar los datos
 
 ```bash
-# descarga (omite los archivos que ya existen)
+# descarga los anios por defecto (ANIOS_POR_DEFECTO) y omite lo que ya existe
 docker compose exec lab python scripts/download_data.py
 
 # opciones
-docker compose exec lab python scripts/download_data.py --years 2026            # un anio
+docker compose exec lab python scripts/download_data.py --years 2024            # un anio
 docker compose exec lab python scripts/download_data.py --taxi green --years 2026
 
 # verificar completitud contra el servidor de la TLC (no descarga nada)
