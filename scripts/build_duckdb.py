@@ -8,7 +8,7 @@ Crea data/processed/taxis.duckdb con:
   - las vistas de sql/00_views.sql (siguen leyendo los Parquet: yellow_raw,
     green_raw, trips, trips_clean, zones);
   - trips_tbl: tabla con el contenido de la vista `trips` (todos los anios en
-    disco), ordenada por fecha de recogida;
+    disco), cargada mes por mes y ordenada por fecha de recogida;
   - zones_tbl: copia de la tabla de zonas;
   - trips_clean_tbl: las mismas reglas de limpieza que trips_clean, pero sobre
     la tabla materializada.
@@ -21,7 +21,7 @@ data/raw. Metabase la abre en modo solo lectura.
 import sys
 import time
 
-from lab_db import BASE_MATERIALIZADA, VISTAS, connect
+from lab_db import BASE_MATERIALIZADA, VISTAS, connect, materializar_trips
 
 REGLAS_LIMPIEZA = VISTAS.read_text().split("CREATE OR REPLACE VIEW trips_clean AS")[1].split(";")[0]
 
@@ -33,7 +33,7 @@ def main() -> int:
 
     con = connect(temporal)
     inicio = time.perf_counter()
-    con.execute("CREATE TABLE trips_tbl AS SELECT * FROM trips ORDER BY pickup_at")
+    materializar_trips(con, "trips_tbl")
     con.execute("CREATE TABLE zones_tbl AS SELECT * FROM zones")
     # trips_clean_tbl = mismas reglas que trips_clean, leyendo la tabla
     con.execute("CREATE OR REPLACE VIEW trips_clean_tbl AS"

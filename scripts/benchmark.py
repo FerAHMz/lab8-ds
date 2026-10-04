@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from lab_db import DIR_SQL, RAIZ, VISTAS, a_markdown, connect, leer_consulta
+from lab_db import DIR_SQL, RAIZ, VISTAS, a_markdown, connect, leer_consulta, materializar_trips
 
 DIR_RAW = "/workspace/data/raw"
 DIR_BENCH = RAIZ / "data" / "processed" / "bench"
@@ -115,7 +115,7 @@ def main() -> int:
         con_tabla = connect(ruta_db, vistas=False)
         con_tabla.execute(texto_vistas)
         t0 = time.perf_counter()
-        con_tabla.execute("CREATE TABLE trips_mat AS SELECT * FROM trips ORDER BY pickup_at")
+        materializar_trips(con_tabla, "trips_mat")
         con_tabla.execute("CREATE TABLE zones_mat AS SELECT * FROM zones")
         con_tabla.execute("CREATE OR REPLACE VIEW trips AS SELECT * FROM trips_mat")
         con_tabla.execute("CREATE OR REPLACE VIEW zones AS SELECT * FROM zones_mat")

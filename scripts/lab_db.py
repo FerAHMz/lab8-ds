@@ -73,3 +73,18 @@ def a_markdown(df, max_filas: int = 40) -> str:
     for fila in df.itertuples(index=False):
         lineas.append("| " + " | ".join(fmt(v) for v in fila) + " |")
     return "\n".join(lineas)
+
+
+def materializar_trips(con: duckdb.DuckDBPyConnection, destino: str, origen: str = "trips") -> None:
+    """Crea `destino` como tabla con el contenido de `origen`, ordenada por pickup_at.
+
+    En lugar de un ORDER BY sobre todo el conjunto (que con 100+ M de filas
+    agota la memoria de la VM de Docker), inserta mes por mes ordenando cada
+    mes. Como los meses se insertan en orden, la tabla queda ordenada por
+    periodo y las zonemaps de pickup_at siguen siendo efectivas.
+    """
+    con.execute(f"CREATE OR REPLACE TABLE {destino} AS SELECT * FROM {origen} LIMIT 0")
+    periodos = con.sql(f"SELECT DISTINCT file_year, file_month FROM {origen} ORDER BY ALL").fetchall()
+    for anio, mes in periodos:
+        con.execute(f"INSERT INTO {destino} SELECT * FROM {origen} "
+                    f"WHERE file_year = {anio} AND file_month = {mes} ORDER BY pickup_at")
