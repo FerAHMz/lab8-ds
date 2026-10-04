@@ -154,18 +154,120 @@ docker compose exec lab python scripts/download_data.py --taxi green --years 202
 docker compose exec lab python scripts/download_data.py --verify
 ```
 
+Por defecto se descargan taxis amarillos y verdes de **2024, 2025 y 2026** (64 archivos,
+~2 GB, 121 M de registros) mas la tabla de zonas de la TLC.
 Los archivos quedan en `data/raw/<tipo>/<anio>/` y el modo `--verify` escribe
 [docs/manifest_descarga.csv](docs/manifest_descarga.csv). Cambios al script y
 criterios de completitud: [docs/02_descarga.md](docs/02_descarga.md).
 
 ## Como ejecutar el analisis
 
-<!-- TODO -->
+Todas las consultas estan en `sql/`, un archivo por consulta con su pregunta,
+objetivo y fuente en el encabezado. `sql/00_views.sql` define las vistas sobre
+los Parquet (`trips`, `trips_clean`, `zones`) y se carga automaticamente con
+`scripts/lab_db.connect()`.
+
+**Opcion A - notebooks** (JupyterLab en <http://127.0.0.1:8888>, carpeta `notebooks/`):
+
+| Notebook | Ejercicio |
+|---|---|
+| `03_exploracion_parquet.ipynb` | 3 - consultas directas sobre Parquet y calidad de datos |
+| `04_eda.ipynb` | 4 - analisis exploratorio (12 preguntas, graficas, hallazgos) |
+| `06_benchmark.ipynb` | 6 - Parquet vs. tabla DuckDB (lee los CSV del benchmark) |
+| `07_indicadores.ipynb` | 7 - tablas de los indicadores del tablero |
+| `08_evolucion_3_anios.ipynb` | 8 - evolucion 2024-2025-2026 |
+
+Para re-ejecutar uno sin abrir el navegador:
+
+```bash
+docker compose exec lab sh -c 'cd notebooks && jupyter nbconvert --to notebook --execute --inplace 04_eda.ipynb'
+```
+
+**Opcion B - por carpeta de consultas**, documentando los resultados en `docs/resultados/`:
+
+```bash
+docker compose exec lab python scripts/run_sql.py sql/03_exploracion
+docker compose exec lab python scripts/run_sql.py sql/04_eda
+docker compose exec lab python scripts/run_sql.py sql/05_validacion
+docker compose exec lab python scripts/run_sql.py sql/07_indicadores
+docker compose exec lab python scripts/run_sql.py sql/08_evolucion
+# --salida <nombre> guarda el resultado con otro nombre (p. ej. para comparar anios)
+```
+
+> **Memoria:** la VM de Docker Desktop suele tener 8 GB y Metabase usa ~3 GB.
+> Las consultas con cuantiles exactos sobre los tres anios (`04_eda/03`,
+> `08_evolucion/01`) necesitan ~4-5 GB: detenga Metabase mientras se ejecutan
+> (`docker compose stop metabase` / `docker compose start metabase`) o asigne mas
+> memoria a Docker. El limite de DuckDB se ajusta con `LAB_MEMORY_LIMIT` (por defecto `3GB`).
 
 ## Como reproducir los benchmarks
 
-<!-- TODO (Ejercicio 6) -->
+```bash
+docker compose stop metabase                                  # libera memoria para medir
+docker compose exec lab python scripts/benchmark.py           # escenarios 1 mes, 2026, 2024+2026 (+3 anios si existe 2025)
+docker compose exec lab python scripts/benchmark.py --escenarios 2024+2025+2026 \
+    --omitir tabla:03_caracteristicas_viaje.sql               # escenario de 3 anios en una VM de 8 GB
+docker compose start metabase
+```
+
+Salidas en `docs/benchmark/` (`resultados*.csv`, `materializacion*.csv`,
+`resultados*.md`); el notebook `06_benchmark.ipynb` las grafica. Analisis en
+[docs/06_benchmark.md](docs/06_benchmark.md).
 
 ## Como generar los resultados principales
 
-<!-- TODO -->
+Secuencia completa desde cero (con el ambiente levantado):
+
+```bash
+docker compose exec lab python scripts/download_data.py            # 1. datos 2024-2026
+docker compose exec lab python scripts/download_data.py --verify   # 2. completitud
+docker compose exec lab python scripts/build_duckdb.py             # 3. base materializada (~1 min, ~4 GB)
+docker compose exec lab python scripts/metabase_dashboard.py       # 4. tablero en Metabase
+bash scripts/capturar_tablero.sh                                   # 5. (host) captura PNG del tablero
+```
+
+El tablero queda en <http://127.0.0.1:3000> -> "Taxis NYC - Indicadores"
+(usuario `admin@lab8.local`, contrasena `Lab8-DuckDB-2026`, configurables con
+`METABASE_EMAIL` / `METABASE_PASSWORD`; la instancia solo escucha en 127.0.0.1).
+
+## Documentacion por ejercicio
+
+| Ejercicio | Documento |
+|---|---|
+| 1 - Ambiente | [docs/01_ambiente.md](docs/01_ambiente.md) |
+| 2 - Descarga | [docs/02_descarga.md](docs/02_descarga.md) |
+| 3 - Consultas directas sobre Parquet | [docs/03_exploracion.md](docs/03_exploracion.md) |
+| 4 - Analisis exploratorio | [docs/04_eda.md](docs/04_eda.md) |
+| 5 - Incorporacion de 2024 | [docs/05_incorporacion_2024.md](docs/05_incorporacion_2024.md) |
+| 6 - Parquet vs. tablas DuckDB | [docs/06_benchmark.md](docs/06_benchmark.md) |
+| 7 - Indicadores y tablero | [docs/07_indicadores.md](docs/07_indicadores.md) |
+| 8 - 2025 y analisis completo | [docs/08_tres_anios.md](docs/08_tres_anios.md) |
+| 9 - Discusion | [docs/09_discusion.md](docs/09_discusion.md) |
+| Diccionario de datos | [docs/codebook.md](docs/codebook.md) |
+
+## Organizacion del codigo
+
+```text
+scripts/
+  download_data.py        descarga + verificacion (--years, --taxi, --verify)
+  lab_db.py               conexion DuckDB con vistas, limites de memoria, utilidades
+  run_sql.py              ejecuta una carpeta de .sql y documenta resultados
+  build_duckdb.py         materializa data/processed/taxis.duckdb
+  benchmark.py            Parquet directo vs. tabla, por escenario
+  metabase_dashboard.py   crea el tablero en Metabase por API
+  capturar_tablero.sh     captura PNG del tablero (host)
+sql/
+  00_views.sql            vistas: yellow_raw, green_raw, trips, trips_clean, zones
+  03_exploracion/  04_eda/  05_validacion/  06_benchmark/  07_indicadores/  08_evolucion/
+docs/
+  NN_*.md                 documentacion por ejercicio
+  resultados/             salidas de run_sql.py (SQL + tabla de resultados)
+  benchmark/              CSV y tabla del benchmark
+  dashboard/              capturas del tablero
+  manifest_descarga.csv   archivos, bytes y registros descargados
+```
+
+## Equipo
+
+- Fernando Rueda
+- Fernando Hernandez
