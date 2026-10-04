@@ -4,8 +4,9 @@
 Uso (dentro del contenedor `lab`):
     python scripts/run_sql.py sql/03_exploracion
     python scripts/run_sql.py sql/04_eda --db data/processed/taxis.duckdb
+    python scripts/run_sql.py sql/04_eda --salida 04_eda_2024_2026
 
-Por cada archivo escribe en docs/resultados/<carpeta>.md:
+Por cada archivo escribe en docs/resultados/<carpeta>.md (o <--salida>.md):
 el encabezado de la consulta (objetivo, fuente, ...), el SQL, el tiempo de
 ejecucion y la tabla de resultados. Asi la documentacion de resultados se
 regenera siempre a partir del mismo codigo.
@@ -28,6 +29,7 @@ def main() -> int:
     parser.add_argument("--db", default=":memory:",
                         help="base DuckDB a usar (por defecto: en memoria + vistas sobre Parquet)")
     parser.add_argument("--max-filas", type=int, default=40)
+    parser.add_argument("--salida", help="nombre del .md de resultados (por defecto: nombre de la carpeta)")
     args = parser.parse_args()
 
     carpeta = args.carpeta if args.carpeta.is_absolute() else RAIZ / args.carpeta
@@ -57,7 +59,7 @@ def main() -> int:
                    a_markdown(df, args.max_filas), ""]
 
     DIR_RESULTADOS.mkdir(parents=True, exist_ok=True)
-    destino = DIR_RESULTADOS / f"{carpeta.name}.md"
+    destino = DIR_RESULTADOS / f"{args.salida or carpeta.name}.md"
     destino.write_text("\n".join(salida))
     print(f"\nresultados documentados en {destino.relative_to(RAIZ)}")
     return 0
