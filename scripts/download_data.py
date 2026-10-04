@@ -42,7 +42,7 @@ import pyarrow.parquet as pq
 import requests
 
 # Anios que se descargan cuando no se pasa --years.
-ANIOS_POR_DEFECTO = (2024, 2026)
+ANIOS_POR_DEFECTO = (2024, 2025, 2026)
 TIPOS_TAXI = ("yellow", "green")
 URL_BASE = "https://d37ci6vzurychx.cloudfront.net/trip-data"
 DIR_DESTINO = Path("data/raw")
