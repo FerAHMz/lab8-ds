@@ -4,15 +4,21 @@
 Uso (dentro del contenedor `lab`):
     python scripts/benchmark.py                 # todos los escenarios disponibles
     python scripts/benchmark.py --repeticiones 3 --escenarios 1_mes 2026
+    python scripts/benchmark.py --escenarios 2024+2025+2026 --omitir tabla:03_caracteristicas_viaje.sql
+
+--omitir modo:consulta registra esa combinacion como no ejecutada (NaN). Se usa
+cuando el proceso no cabe en la RAM de la VM de Docker: los cuantiles exactos
+(quantile_cont) no respetan memory_limit y el kernel termina el proceso, por lo
+que no se puede capturar como excepcion.
 
 Para cada escenario (cantidad de datos):
-  1. modo `parquet`: conexion en memoria con las vistas de sql/00_views.sql
-     apuntando solo a los archivos del escenario;
-  2. modo `tabla`: base DuckDB nueva (data/processed/bench/<escenario>.duckdb)
+  1. modo `tabla`: base DuckDB nueva (data/processed/bench/<escenario>.duckdb)
      donde `trips` y `zones` se materializan como tablas; las vistas
-     trips_clean y las consultas son exactamente las mismas.
+     trips_clean y las consultas son exactamente las mismas;
+  2. modo `parquet`: conexion en memoria con las vistas de sql/00_views.sql
+     apuntando solo a los archivos del escenario;
   3. cada consulta se ejecuta una vez "en frio" (primera) y luego N veces;
-     se reporta la mediana de las N.
+     se reporta la mediana de las N. Solo hay una conexion abierta a la vez.
 
 Las consultas son archivos .sql del laboratorio (ver CONSULTAS); el texto es
 identico en ambos modos, solo cambia a que objeto apunta la vista `trips`.
@@ -27,6 +33,7 @@ import sys
 import time
 from pathlib import Path
 
+import duckdb
 import pandas as pd
 
 from lab_db import DIR_SQL, RAIZ, VISTAS, a_markdown, connect, leer_consulta, materializar_trips
@@ -88,6 +95,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repeticiones", type=int, default=5)
     parser.add_argument("--escenarios", nargs="+", choices=list(ESCENARIOS))
+    parser.add_argument("--omitir", nargs="*", default=[], metavar="MODO:CONSULTA",
+                        help="combinaciones a no ejecutar, p. ej. tabla:03_caracteristicas_viaje.sql")
     parser.add_argument("--conservar", action="store_true",
                         help="no borrar las bases de cada escenario al terminar")
     args = parser.parse_args()
@@ -102,25 +111,22 @@ def main() -> int:
         texto_vistas = vistas_para(ESCENARIOS[escenario])
         print(f"\n=== escenario {escenario} ===")
 
-        # modo parquet: vistas sobre los archivos
-        con_parquet = connect(vistas=False)
-        con_parquet.execute(texto_vistas)
-        registros = con_parquet.sql("SELECT count(*) FROM trips").fetchone()[0]
-        bytes_parquet = sum(f.stat().st_size for t in ("yellow", "green")
-                            for p in ESCENARIOS[escenario] for f in (RAIZ / "data/raw" / t).glob(p))
-
         # modo tabla: misma definicion, pero trips/zones materializadas
         ruta_db = DIR_BENCH / f"{escenario}.duckdb"
         ruta_db.unlink(missing_ok=True)
-        con_tabla = connect(ruta_db, vistas=False)
-        con_tabla.execute(texto_vistas)
+        con = connect(ruta_db, vistas=False)
+        con.execute(texto_vistas)
+        registros = con.sql("SELECT count(*) FROM trips").fetchone()[0]
         t0 = time.perf_counter()
-        materializar_trips(con_tabla, "trips_mat")
-        con_tabla.execute("CREATE TABLE zones_mat AS SELECT * FROM zones")
-        con_tabla.execute("CREATE OR REPLACE VIEW trips AS SELECT * FROM trips_mat")
-        con_tabla.execute("CREATE OR REPLACE VIEW zones AS SELECT * FROM zones_mat")
-        con_tabla.execute("CHECKPOINT")
+        materializar_trips(con, "trips_mat")
+        con.execute("CREATE TABLE zones_mat AS SELECT * FROM zones")
+        con.execute("CREATE OR REPLACE VIEW trips AS SELECT * FROM trips_mat")
+        con.execute("CREATE OR REPLACE VIEW zones AS SELECT * FROM zones_mat")
+        con.execute("CHECKPOINT")
         seg_materializar = time.perf_counter() - t0
+        con.close()
+        bytes_parquet = sum(f.stat().st_size for t in ("yellow", "green")
+                            for p in ESCENARIOS[escenario] for f in (RAIZ / "data/raw" / t).glob(p))
         materializacion.append({
             "escenario": escenario, "registros": registros,
             "mb_parquet": round(bytes_parquet / 1024**2, 1),
@@ -129,17 +135,37 @@ def main() -> int:
         })
         print(f"  {registros:,} registros | materializar: {seg_materializar:.1f} s")
 
-        for consulta in consultas:
-            for modo, con in (("parquet", con_parquet), ("tabla", con_tabla)):
-                r = medir(con, consulta["sql"], args.repeticiones)
+        # Los modos se miden por separado (una sola conexion abierta a la vez):
+        # con 100+ M de filas, dos conexiones con cuantiles exactos superan la RAM de la VM.
+        for modo in ("parquet", "tabla"):
+            if modo == "parquet":
+                con = connect(vistas=False)
+                con.execute(texto_vistas)
+            else:
+                con = connect(ruta_db, vistas=False)
+            for consulta in consultas:
+                if f"{modo}:{consulta['archivo']}" in args.omitir:
+                    print(f"  {consulta['archivo']:<32} {modo:<8} OMITIDA (no cabe en memoria)")
+                    filas.append({"escenario": escenario, "registros": registros,
+                                  "consulta": consulta["archivo"], "modo": modo,
+                                  **{k: float("nan") for k in ("primera_s", "mediana_s", "min_s", "max_s")}})
+                    continue
+                try:
+                    r = medir(con, consulta["sql"], args.repeticiones)
+                except duckdb.OutOfMemoryException:
+                    # se registra como resultado: la consulta no cabe en memoria en este modo
+                    r = {k: float("nan") for k in ("primera_s", "mediana_s", "min_s", "max_s")}
+                    print(f"  {consulta['archivo']:<32} {modo:<8} SIN MEMORIA")
+                    filas.append({"escenario": escenario, "registros": registros,
+                                  "consulta": consulta["archivo"], "modo": modo, **r})
+                    continue
                 filas.append({"escenario": escenario, "registros": registros,
                               "consulta": consulta["archivo"], "modo": modo,
                               **{k: round(v, 4) for k, v in r.items()}})
                 print(f"  {consulta['archivo']:<32} {modo:<8} primera {r['primera_s']:7.3f} s"
                       f" | mediana {r['mediana_s']:7.3f} s")
+            con.close()
 
-        con_parquet.close()
-        con_tabla.close()
         if not args.conservar:
             ruta_db.unlink(missing_ok=True)
 

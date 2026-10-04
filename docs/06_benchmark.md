@@ -66,7 +66,11 @@ una vez "en frío" y luego 5 veces; se reporta la **mediana**. Equipo: Docker De
 | 2026 (8 meses) | 30.0 M | 496 MB | 1,008 MB | 19.5 s |
 | 2024 + 2026 (20 meses) | 71.9 M | 1,172 MB | 2,369 MB | 57.5 s |
 
-(El escenario 2024+2025+2026 se agrega automáticamente cuando existen los archivos de 2025; ver Ejercicio 8.)
+| 2024 + 2025 + 2026 (32 meses)* | 121.2 M | 1,977 MB | 4,049 MB | 55.9 s |
+
+\* Corrido en el Ejercicio 8, ya con la materialización mes por mes:
+`python scripts/benchmark.py --escenarios 2024+2025+2026 --omitir tabla:03_caracteristicas_viaje.sql`
+→ [`benchmark/resultados_2024+2025+2026.csv`](benchmark/resultados_2024+2025+2026.csv).
 
 ## 6.7 Resultados (mediana en segundos)
 
@@ -80,6 +84,19 @@ una vez "en frío" y luego 5 veces; se reporta la **mediana**. Equipo: Docker De
 | 06 método de pago | 0.170 | 0.076 | 0.865 | 0.723 | 2.211 | 1.804 | 1.2× |
 | 08 componentes del cobro | 0.133 | 0.028 | 0.439 | 0.210 | 0.926 | 0.507 | 1.8× |
 | 09 aeropuertos (JOIN) | 0.253 | 0.154 | 1.506 | 1.295 | 3.932 | 3.338 | 1.2× |
+
+Escenario de tres años (121.2 M de filas, Ejercicio 8):
+
+| consulta | Parquet | Tabla | P/T |
+|---|---:|---:|---:|
+| b01 conteo | 0.039 | 0.032 | 1.2× |
+| b02 filtro un día | 0.097 | **0.007** | **13.9×** |
+| 01 viajes por mes | 0.980 | 0.401 | 2.4× |
+| 02 hora y día | 1.018 | 0.928 | 1.1× |
+| 03 características (cuantiles) | 17.272 | **no cabe en memoria** | — |
+| 06 método de pago | 2.854 | 2.624 | 1.1× |
+| 08 componentes del cobro | 1.251 | 0.887 | 1.4× |
+| 09 aeropuertos (JOIN) | 5.797 | 5.263 | 1.1× |
 
 P = Parquet directo, T = tabla DuckDB. Tabla completa con primera ejecución, mínimo y máximo:
 [`benchmark/resultados.csv`](benchmark/resultados.csv).
@@ -108,7 +125,14 @@ P = Parquet directo, T = tabla DuckDB. Tabla completa con primera ejecución, m�
    `08` tarda 1.83 s en la tabla contra 1.04 s en Parquet, porque tiene que traer bloques de un
    archivo de 2.3 GB a memoria. En el notebook, la primera consulta sobre `trips_tbl` tardó 0.92 s
    contra 0.19 s sobre Parquet.
-7. **La materialización tiene un costo:** 57 s y el doble de espacio en disco. Con el ahorro
+7. **Cuando la tabla no cabe en memoria, desaparece buena parte de su ventaja.** Con tres años
+   (tabla de ~4 GB y `memory_limit` de 3 GB) la tabla ya no puede quedar entera en el *buffer
+   manager*: en `06` y `09` empata con Parquet (1.1×). Además, la consulta de cuantiles exactos sobre
+   la tabla **hizo que el kernel matara el proceso** aun con un límite de 2 GB: el estado de
+   `quantile_cont` (todos los valores en memoria) no cuenta para `memory_limit` y se suma a las
+   páginas de la tabla. Sobre Parquet terminó en 17 s. Se registró como "no cabe en memoria" con
+   `--omitir`. Escalar a más datos exige `approx_quantile`, más RAM o calcular por partes.
+8. **La materialización tiene un costo:** 57 s y el doble de espacio en disco. Con el ahorro
    promedio medido (0.29 s por consulta en el escenario mayor), se recupera después de **~200
    consultas**. El notebook calcula este punto de equilibrio para cada escenario.
 

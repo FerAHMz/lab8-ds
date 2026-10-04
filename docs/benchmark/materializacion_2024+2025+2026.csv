@@ -1,0 +1,2 @@
+escenario,registros,mb_parquet,mb_duckdb,segundos_materializar
+2024+2025+2026,121184384,1977.0,4049.3,55.89
