@@ -7,6 +7,7 @@ sql/00_views.sql, de modo que todas las consultas leen los Parquet de la misma
 forma desde notebooks, scripts y benchmark.
 """
 
+import os
 import re
 import time
 from pathlib import Path
@@ -17,12 +18,21 @@ RAIZ = Path(__file__).resolve().parents[1]
 DIR_SQL = RAIZ / "sql"
 VISTAS = DIR_SQL / "00_views.sql"
 BASE_MATERIALIZADA = RAIZ / "data" / "processed" / "taxis.duckdb"
+DIR_TEMPORAL = RAIZ / "data" / "processed" / ".duckdb_tmp"
+
+# La VM de Docker comparte la RAM con Metabase; un limite explicito evita que el
+# contenedor sea terminado por falta de memoria y obliga a DuckDB a derramar a
+# disco (DIR_TEMPORAL) en operaciones grandes como ORDER BY o CREATE TABLE.
+LIMITE_MEMORIA = os.environ.get("LAB_MEMORY_LIMIT", "3GB")
 
 
 def connect(database: str | Path = ":memory:", read_only: bool = False,
             vistas: bool = True) -> duckdb.DuckDBPyConnection:
     """Conexion DuckDB con las vistas del laboratorio ya creadas."""
     con = duckdb.connect(str(database), read_only=read_only)
+    con.execute(f"SET memory_limit = '{LIMITE_MEMORIA}'")
+    con.execute(f"SET temp_directory = '{DIR_TEMPORAL}'")
+    con.execute("SET preserve_insertion_order = false")
     if vistas and not read_only:
         con.execute(VISTAS.read_text())
     return con
